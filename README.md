@@ -1,135 +1,26 @@
-# Template for Isaac Lab Projects
+# Isaac Lab 기반 Jetbot의 YOLO v11 객체 인식을 통한 강화학습 주행
 
-## Overview
+이 프로젝트는 **NVIDIA Isaac Lab** 시뮬레이션 환경에서 **Jetbot** 로봇이 자율적으로 객체를 탐색하고 접근하도록 훈련하는 것을 목표로 합니다.
 
-This project/repository serves as a template for building projects or extensions based on Isaac Lab.
-It allows you to develop in an isolated environment, outside of the core Isaac Lab repository.
 
-**Key Features:**
+## 1. 🤖 프로젝트 소개
 
-- `Isolation` Work outside the core Isaac Lab repository, ensuring that your development efforts remain self-contained.
-- `Flexibility` This template is set up to allow your code to be run as an extension in Omniverse.
+본 프로젝트는 로봇의 '인식'과 '행동'을 결합하는 강화학습 파이프라인을 구축합니다.
 
-**Keywords:** extension, template, isaaclab
+시뮬레이션 환경(Isaac Lab)에서 `Jetbot.usd` 에셋을 불러와 로봇에 탑재된 **카메라 센서**를 통해 실시간으로 주변 환경 데이터를 수집합니다. 이 비전 데이터는 최신 객체 인식 모델인 **YOLO v11**로 전송되어 '사람' 또는 사전에 정의된 '사물'의 위치를 식별합니다.
 
-## Installation
+**강화학습(Reinforcement Learning)** 에이전트는 이 YOLO v11의 탐지 결과를 보상(Reward) 및 상태(State) 정보로 활용하여, 탐지된 객체에게 안전하고 효율적으로 **가까이 다가가는** 최적의 주행 정책(policy)을 학습합니다.
 
-- Install Isaac Lab by following the [installation guide](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/index.html).
-  We recommend using the conda or uv installation as it simplifies calling Python scripts from the terminal.
+### 🎯 주요 목표
 
-- Clone or copy this project/repository separately from the Isaac Lab installation (i.e. outside the `IsaacLab` directory):
+1.  **데이터 수집:** Isaac Lab 내 Jetbot의 카메라 센서로부터 RGB 이미지 데이터를 실시간으로 수집합니다.
+2.  **객체 인식:** 수집된 이미지를 YOLO v11 모델로 처리하여 원하는 객체(사람, 사물 등)의 바운딩 박스(bounding box) 정보를 획득합니다.
+3.  **강화학습 적용:** 객체 탐지 정보를 기반으로, 로봇이 목표물에 성공적으로 접근했을 때 보상을 제공하는 강화학습 환경을 설계하고 에이전트를 훈련시킵니다.
 
-- Using a python interpreter that has Isaac Lab installed, install the library in editable mode using:
+### 🛠️ 주요 기술 스택
 
-    ```bash
-    # use 'PATH_TO_isaaclab.sh|bat -p' instead of 'python' if Isaac Lab is not installed in Python venv or conda
-    python -m pip install -e source/yolo
-
-- Verify that the extension is correctly installed by:
-
-    - Listing the available tasks:
-
-        Note: It the task name changes, it may be necessary to update the search pattern `"Template-"`
-        (in the `scripts/list_envs.py` file) so that it can be listed.
-
-        ```bash
-        # use 'FULL_PATH_TO_isaaclab.sh|bat -p' instead of 'python' if Isaac Lab is not installed in Python venv or conda
-        python scripts/list_envs.py
-        ```
-
-    - Running a task:
-
-        ```bash
-        # use 'FULL_PATH_TO_isaaclab.sh|bat -p' instead of 'python' if Isaac Lab is not installed in Python venv or conda
-        python scripts/<RL_LIBRARY>/train.py --task=<TASK_NAME>
-        ```
-
-    - Running a task with dummy agents:
-
-        These include dummy agents that output zero or random agents. They are useful to ensure that the environments are configured correctly.
-
-        - Zero-action agent
-
-            ```bash
-            # use 'FULL_PATH_TO_isaaclab.sh|bat -p' instead of 'python' if Isaac Lab is not installed in Python venv or conda
-            python scripts/zero_agent.py --task=<TASK_NAME>
-            ```
-        - Random-action agent
-
-            ```bash
-            # use 'FULL_PATH_TO_isaaclab.sh|bat -p' instead of 'python' if Isaac Lab is not installed in Python venv or conda
-            python scripts/random_agent.py --task=<TASK_NAME>
-            ```
-
-### Set up IDE (Optional)
-
-To setup the IDE, please follow these instructions:
-
-- Run VSCode Tasks, by pressing `Ctrl+Shift+P`, selecting `Tasks: Run Task` and running the `setup_python_env` in the drop down menu.
-  When running this task, you will be prompted to add the absolute path to your Isaac Sim installation.
-
-If everything executes correctly, it should create a file .python.env in the `.vscode` directory.
-The file contains the python paths to all the extensions provided by Isaac Sim and Omniverse.
-This helps in indexing all the python modules for intelligent suggestions while writing code.
-
-### Setup as Omniverse Extension (Optional)
-
-We provide an example UI extension that will load upon enabling your extension defined in `source/yolo/yolo/ui_extension_example.py`.
-
-To enable your extension, follow these steps:
-
-1. **Add the search path of this project/repository** to the extension manager:
-    - Navigate to the extension manager using `Window` -> `Extensions`.
-    - Click on the **Hamburger Icon**, then go to `Settings`.
-    - In the `Extension Search Paths`, enter the absolute path to the `source` directory of this project/repository.
-    - If not already present, in the `Extension Search Paths`, enter the path that leads to Isaac Lab's extension directory directory (`IsaacLab/source`)
-    - Click on the **Hamburger Icon**, then click `Refresh`.
-
-2. **Search and enable your extension**:
-    - Find your extension under the `Third Party` category.
-    - Toggle it to enable your extension.
-
-## Code formatting
-
-We have a pre-commit template to automatically format your code.
-To install pre-commit:
-
-```bash
-pip install pre-commit
-```
-
-Then you can run pre-commit with:
-
-```bash
-pre-commit run --all-files
-```
-
-## Troubleshooting
-
-### Pylance Missing Indexing of Extensions
-
-In some VsCode versions, the indexing of part of the extensions is missing.
-In this case, add the path to your extension in `.vscode/settings.json` under the key `"python.analysis.extraPaths"`.
-
-```json
-{
-    "python.analysis.extraPaths": [
-        "<path-to-ext-repo>/source/yolo"
-    ]
-}
-```
-
-### Pylance Crash
-
-If you encounter a crash in `pylance`, it is probable that too many files are indexed and you run out of memory.
-A possible solution is to exclude some of omniverse packages that are not used in your project.
-To do so, modify `.vscode/settings.json` and comment out packages under the key `"python.analysis.extraPaths"`
-Some examples of packages that can likely be excluded are:
-
-```json
-"<path-to-isaac-sim>/extscache/omni.anim.*"         // Animation packages
-"<path-to-isaac-sim>/extscache/omni.kit.*"          // Kit UI tools
-"<path-to-isaac-sim>/extscache/omni.graph.*"        // Graph UI tools
-"<path-to-isaac-sim>/extscache/omni.services.*"     // Services tools
-...
-```
+* **시뮬레이터:** NVIDIA Isaac Lab
+* **로봇 에셋:** Jetbot.usd
+* **객체 인식:** YOLO v11
+* **학습 알고리즘:** 강화학습 (PPO)
+* **데이터 파이프라인:** Isaac Sim Camera Sensor
