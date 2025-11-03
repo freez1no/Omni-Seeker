@@ -1,135 +1,111 @@
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
-# All rights reserved.
-#
-# SPDX-License-Identifier: BSD-3-Clause
-
 from __future__ import annotations
-
-import math
-import torch
 from collections.abc import Sequence
-
-import isaaclab.sim as sim_utils
-from isaaclab.assets import Articulation
+import torch
+from isaaclab.assets import Articulation, RigidObject
 from isaaclab.envs import DirectRLEnv
-from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
-from isaaclab.utils.math import sample_uniform
+from isaaclab.utils import configclass
+from isaaclab.sim.spawners import spawn_ground_plane
+import isaaclab.sim as sim_utils
+from isaaclab.sensors import Camera 
+from ultralytics import YOLO
+from .yolo_env_cfg import yoloEnvCfg
 
-from .yolo_env_cfg import YoloEnvCfg
-
-
-class YoloEnv(DirectRLEnv):
-    cfg: YoloEnvCfg
-
-    def __init__(self, cfg: YoloEnvCfg, render_mode: str | None = None, **kwargs):
-        super().__init__(cfg, render_mode, **kwargs)
-
-        self._cart_dof_idx, _ = self.robot.find_joints(self.cfg.cart_dof_name)
-        self._pole_dof_idx, _ = self.robot.find_joints(self.cfg.pole_dof_name)
-
-        self.joint_pos = self.robot.data.joint_pos
-        self.joint_vel = self.robot.data.joint_vel
+class yoloEnv(DirectRLEnv):
+    cfg: yoloEnvCfg
+    def __init__(self, cfg: yoloEnvCfg, **kwargs):
+        super().__init__(cfg, **kwargs)
+        self.dof_idx, _ = self.robot.find_joints(self.cfg.dof_names)
+        print(f"Loading YOLOv11 model 'yolo11n.pt' on device {self.device}...")
+        self.yolo_model = YOLO("yolo11n.pt") 
+        self.yolo_model.to(self.device)
+        print("YOLO model loaded successfully.")
+        self.bbox_obs = torch.zeros((self.num_envs, 4), device=self.device)
 
     def _setup_scene(self):
         self.robot = Articulation(self.cfg.robot_cfg)
-        # add ground plane
-        spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())
-        # clone and replicate
+        self.target = RigidObject(self.cfg.target_cfg)
+
+        spawn_ground_plane(prim_path="/World/ground", cfg=sim_utils.GroundPlaneCfg())
+
+        self.cfg.camera_cfg.num_envs = self.cfg.scene.num_envs
+        camera_sensor = Camera(self.cfg.camera_cfg)
+
         self.scene.clone_environments(copy_from_source=False)
-        # we need to explicitly filter collisions for CPU simulation
-        if self.device == "cpu":
-            self.scene.filter_collisions(global_prim_paths=[])
-        # add articulation to scene
         self.scene.articulations["robot"] = self.robot
-        # add lights
+        self.scene.rigid_objects["target"] = self.target 
+        self.scene.sensors["camera"] = camera_sensor
         light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
         light_cfg.func("/World/Light", light_cfg)
+
+    def _get_observations(self) -> dict:
+        image_data_rgba = self.scene.sensors["camera"].data.output["rgb"]
+        images_rgb_nhwc = image_data_rgba[..., :3]
+        results = self.yolo_model(
+            images_rgb_nhwc, 
+            classes=[32], # sports ball
+            verbose=False, 
+            device=self.device
+        )
+        obs_tensor = torch.zeros((self.num_envs, 4), device=self.device)
+        for i, res in enumerate(results):
+            if res.boxes.shape[0] > 0:
+                obs_tensor[i] = res.boxes.xywhn[0]
+        self.bbox_obs = obs_tensor
+        return {"policy": self.bbox_obs}
+
+    def _get_rewards(self) -> torch.Tensor:
+        x_norm, _, w_norm, h_norm = torch.split(self.bbox_obs, 1, dim=1)
+        x_norm = x_norm.squeeze()
+        w_norm = w_norm.squeeze()
+        h_norm = h_norm.squeeze()
+        found_target = (w_norm > 0).float()
+        center_error = torch.abs(x_norm - 0.5)
+        centering_reward = (0.5 - center_error) * 2.0 * found_target
+        distance_reward = h_norm * found_target
+        time_penalty = -0.01
+        total_reward = (centering_reward * 1.0) + \
+                       (distance_reward * 0.5) + \
+                       time_penalty
+        return total_reward.reshape(-1, 1)
+
+    def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
+        time_out = self.episode_length_buf >= self.max_episode_length
+        dones = torch.zeros_like(time_out)
+        return dones, time_out
+
+    def _reset_idx(self, env_ids: Sequence[int] | None):
+        super()._reset_idx(env_ids) 
+        if env_ids is None:
+            reset_env_ids_tensor = torch.arange(self.num_envs, device=self.device, dtype=torch.long)
+        elif isinstance(env_ids, slice):
+            reset_env_ids_tensor = torch.arange(self.num_envs, device=self.device, dtype=torch.long)
+        else:
+            reset_env_ids_tensor = torch.as_tensor(env_ids, device=self.device, dtype=torch.long)
+        num_resets = len(reset_env_ids_tensor)
+        robot_default_state = self.robot.data.default_root_state[reset_env_ids_tensor]
+        robot_default_state[:, :3] += self.scene.env_origins[reset_env_ids_tensor]
+        self.robot.write_root_state_to_sim(robot_default_state, reset_env_ids_tensor)
+        default_joint_pos = self.robot.data.default_joint_pos[reset_env_ids_tensor]
+        default_joint_vel = self.robot.data.default_joint_vel[reset_env_ids_tensor]
+        self.robot.write_joint_state_to_sim(default_joint_pos, default_joint_vel, None, reset_env_ids_tensor)
+        target_new_state = self.target.data.default_root_state[reset_env_ids_tensor].clone()
+        target_new_state[:, :3] += self.scene.env_origins[reset_env_ids_tensor]
+
+        rand_x = torch.rand(num_resets, device=self.device) * 2.0 + 1.0
+        rand_y = (torch.rand(num_resets, device=self.device) * 4.0 - 2.0)
+        
+        target_new_state[:, 0] = self.scene.env_origins[reset_env_ids_tensor, 0] + rand_x
+        target_new_state[:, 1] = self.scene.env_origins[reset_env_ids_tensor, 1] + rand_y
+        target_new_state[:, 2] = self.scene.env_origins[reset_env_ids_tensor, 2] + 0.25 # 공 반지름만큼 살짝 띄우기
+
+        target_new_state[:, 3:7] = torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device)
+        target_new_state[:, 7:13] = 0.0 # 속도
+
+        self.target.write_root_state_to_sim(target_new_state, reset_env_ids_tensor) 
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
         self.actions = actions.clone()
 
     def _apply_action(self) -> None:
-        self.robot.set_joint_effort_target(self.actions * self.cfg.action_scale, joint_ids=self._cart_dof_idx)
-
-    def _get_observations(self) -> dict:
-        obs = torch.cat(
-            (
-                self.joint_pos[:, self._pole_dof_idx[0]].unsqueeze(dim=1),
-                self.joint_vel[:, self._pole_dof_idx[0]].unsqueeze(dim=1),
-                self.joint_pos[:, self._cart_dof_idx[0]].unsqueeze(dim=1),
-                self.joint_vel[:, self._cart_dof_idx[0]].unsqueeze(dim=1),
-            ),
-            dim=-1,
-        )
-        observations = {"policy": obs}
-        return observations
-
-    def _get_rewards(self) -> torch.Tensor:
-        total_reward = compute_rewards(
-            self.cfg.rew_scale_alive,
-            self.cfg.rew_scale_terminated,
-            self.cfg.rew_scale_pole_pos,
-            self.cfg.rew_scale_cart_vel,
-            self.cfg.rew_scale_pole_vel,
-            self.joint_pos[:, self._pole_dof_idx[0]],
-            self.joint_vel[:, self._pole_dof_idx[0]],
-            self.joint_pos[:, self._cart_dof_idx[0]],
-            self.joint_vel[:, self._cart_dof_idx[0]],
-            self.reset_terminated,
-        )
-        return total_reward
-
-    def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
-        self.joint_pos = self.robot.data.joint_pos
-        self.joint_vel = self.robot.data.joint_vel
-
-        time_out = self.episode_length_buf >= self.max_episode_length - 1
-        out_of_bounds = torch.any(torch.abs(self.joint_pos[:, self._cart_dof_idx]) > self.cfg.max_cart_pos, dim=1)
-        out_of_bounds = out_of_bounds | torch.any(torch.abs(self.joint_pos[:, self._pole_dof_idx]) > math.pi / 2, dim=1)
-        return out_of_bounds, time_out
-
-    def _reset_idx(self, env_ids: Sequence[int] | None):
-        if env_ids is None:
-            env_ids = self.robot._ALL_INDICES
-        super()._reset_idx(env_ids)
-
-        joint_pos = self.robot.data.default_joint_pos[env_ids]
-        joint_pos[:, self._pole_dof_idx] += sample_uniform(
-            self.cfg.initial_pole_angle_range[0] * math.pi,
-            self.cfg.initial_pole_angle_range[1] * math.pi,
-            joint_pos[:, self._pole_dof_idx].shape,
-            joint_pos.device,
-        )
-        joint_vel = self.robot.data.default_joint_vel[env_ids]
-
-        default_root_state = self.robot.data.default_root_state[env_ids]
-        default_root_state[:, :3] += self.scene.env_origins[env_ids]
-
-        self.joint_pos[env_ids] = joint_pos
-        self.joint_vel[env_ids] = joint_vel
-
-        self.robot.write_root_pose_to_sim(default_root_state[:, :7], env_ids)
-        self.robot.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids)
-        self.robot.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
-
-
-@torch.jit.script
-def compute_rewards(
-    rew_scale_alive: float,
-    rew_scale_terminated: float,
-    rew_scale_pole_pos: float,
-    rew_scale_cart_vel: float,
-    rew_scale_pole_vel: float,
-    pole_pos: torch.Tensor,
-    pole_vel: torch.Tensor,
-    cart_pos: torch.Tensor,
-    cart_vel: torch.Tensor,
-    reset_terminated: torch.Tensor,
-):
-    rew_alive = rew_scale_alive * (1.0 - reset_terminated.float())
-    rew_termination = rew_scale_terminated * reset_terminated.float()
-    rew_pole_pos = rew_scale_pole_pos * torch.sum(torch.square(pole_pos).unsqueeze(dim=1), dim=-1)
-    rew_cart_vel = rew_scale_cart_vel * torch.sum(torch.abs(cart_vel).unsqueeze(dim=1), dim=-1)
-    rew_pole_vel = rew_scale_pole_vel * torch.sum(torch.abs(pole_vel).unsqueeze(dim=1), dim=-1)
-    total_reward = rew_alive + rew_termination + rew_pole_pos + rew_cart_vel + rew_pole_vel
-    return total_reward
+        scaled_actions = self.actions * 2.5 
+        self.robot.set_joint_velocity_target(scaled_actions, joint_ids=self.dof_idx)

@@ -1,48 +1,60 @@
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
-# All rights reserved.
-#
-# SPDX-License-Identifier: BSD-3-Clause
-
-from isaaclab_assets.robots.cartpole import CARTPOLE_CFG
-
-from isaaclab.assets import ArticulationCfg
+import isaaclab.sim as sim_utils
+from isaaclab.assets import ArticulationCfg, RigidObjectCfg
 from isaaclab.envs import DirectRLEnvCfg
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sim import SimulationCfg
 from isaaclab.utils import configclass
-
+from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
+from yolo.robots.jetbot import JETBOT_CONFIG
+from isaaclab.sensors import CameraCfg
 
 @configclass
-class YoloEnvCfg(DirectRLEnvCfg):
-    # env
-    decimation = 2
-    episode_length_s = 5.0
-    # - spaces definition
-    action_space = 1
-    observation_space = 4
-    state_space = 0
+class yoloEnvCfg(DirectRLEnvCfg):
+    """Jetbot YOLO 프로젝트 환경 설정 클래스 (수정된 버전)."""
 
-    # simulation
-    sim: SimulationCfg = SimulationCfg(dt=1 / 120, render_interval=decimation)
+    sim: SimulationCfg = SimulationCfg(dt=1 / 120, render_interval=2)
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(
+        num_envs=512, #한번에 생성 될 훈련 에이전트 수
+        env_spacing=4.0,
+        replicate_physics=True,
+    )
 
-    # robot(s)
-    robot_cfg: ArticulationCfg = CARTPOLE_CFG.replace(prim_path="/World/envs/env_.*/Robot")
+    robot_cfg: ArticulationCfg = JETBOT_CONFIG.replace(
+        prim_path="/World/envs/env_.*/Robot"
+    )
+    target_cfg: RigidObjectCfg = RigidObjectCfg(
+        prim_path="/World/envs/env_.*/Target", # 타겟이 생성될 경로
+        spawn=sim_utils.SphereCfg(
+            radius=0.25, # 반지름 25cm
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(
+                kinematic_enabled=True
+            ),
+            visual_material=sim_utils.PreviewSurfaceCfg(
+                diffuse_color=(1.0, 0.0, 0.0) # RGB
+            ),
+        ),
+    )
+    camera_cfg: CameraCfg = CameraCfg(
+        prim_path="/World/envs/env_.*/Robot/camera_sensor",
+        update_period=0.02,
+        height=240,
+        width=320,
+        data_types=["rgb"],
+        spawn=sim_utils.PinholeCameraCfg(
+            focal_length=24.0,
+            horizontal_aperture=20.955,
+        ),
+        offset=CameraCfg.OffsetCfg(
+            pos=(0.1, 0.0, 0.1), 
+            rot=(0.0, 0.0, 0.0, 1.0)
+        )
+    )
 
-    # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=4.0, replicate_physics=True)
-
-    # custom parameters/scales
-    # - controllable joint
-    cart_dof_name = "slider_to_cart"
-    pole_dof_name = "cart_to_pole"
-    # - action scale
-    action_scale = 100.0  # [N]
-    # - reward scales
-    rew_scale_alive = 1.0
-    rew_scale_terminated = -2.0
-    rew_scale_pole_pos = -1.0
-    rew_scale_cart_vel = -0.01
-    rew_scale_pole_vel = -0.005
-    # - reset states/conditions
-    initial_pole_angle_range = [-0.25, 0.25]  # pole angle sample range on reset [rad]
-    max_cart_pos = 3.0  # reset if cart exceeds this position [m]
+    action_space: int = 2
+    observation_space: int = 4
+    state_space: int = 0
+    dof_names: list[str] = ["left_wheel_joint", "right_wheel_joint"]
+    
+    # 에피소드 설정
+    decimation: int = 2
+    episode_length_s: float = 10.0
