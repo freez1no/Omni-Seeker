@@ -10,8 +10,6 @@ from isaaclab.sensors import CameraCfg
 
 @configclass
 class yoloEnvCfg(DirectRLEnvCfg):
-    """Jetbot YOLO 프로젝트 환경 설정 클래스 (수정된 버전)."""
-
     sim: SimulationCfg = SimulationCfg(dt=1 / 120, render_interval=2)
     scene: InteractiveSceneCfg = InteractiveSceneCfg(
         num_envs=32, #한번에 생성 될 훈련 에이전트 수
@@ -23,14 +21,14 @@ class yoloEnvCfg(DirectRLEnvCfg):
         prim_path="/World/envs/env_.*/Robot"
     )
     target_cfg: RigidObjectCfg = RigidObjectCfg(
-        prim_path="/World/envs/env_.*/Target", # 타겟이 생성될 경로
+        prim_path="/World/envs/env_.*/Target",
         spawn=sim_utils.SphereCfg(
             radius=0.05, # 타겟 반지름 cm
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 kinematic_enabled=True
             ),
             visual_material=sim_utils.PreviewSurfaceCfg(
-                diffuse_color=(1.0, 0.0, 0.0) # 타겟 색상 (빨간색)
+                diffuse_color=(1.0, 0.0, 0.0)
             ),
         ),
     )
@@ -56,5 +54,5 @@ class yoloEnvCfg(DirectRLEnvCfg):
     dof_names: list[str] = ["left_wheel_joint", "right_wheel_joint"]
     
     # 에피소드 설정
-    decimation: int = 2 # 액션 적용 주기 (시뮬레이션 스텝 수)
-    episode_length_s: float = 10.0 # 에피소드 길이 (초)
+    decimation: int = 2 
+    episode_length_s: float = 10.0 # 에피소드 길이
