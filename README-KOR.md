@@ -21,7 +21,7 @@
 9. 실제 Jetbot에 모델 적용 및 테스트
 
 ###  기술 스택
-환경 : NVIDIA Isaac Lab
-객체인식 : YOLO v11
-알고리즘 : RL Games, skrl, PPO
-데이터 파이프라인 : Isaac Sim Camera Sensor
+- 환경 : NVIDIA Isaac Lab
+- 객체인식 : YOLO v11
+- 알고리즘 : RL Games, skrl, PPO
+- 데이터 파이프라인 : Isaac Sim Camera Sensor
