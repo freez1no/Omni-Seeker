@@ -26,3 +26,12 @@ The reinforcement learning agent utilizes the object recognition results of this
 - Object recognition: YOLO v11
 - Algorithm: RL Games, skrl, PPO
 - Data Pipeline: Isaac Sim Camera Sensor
+
+## Install and Try
+### Install Librarys
+> By default, assume that Isaac Sim and Isaac Lab are installed.
+```python
+cd Ommi-Seeker
+python -m pip install -e source/yolo/
+pip install ultralytics opencv-python skrl
+```
