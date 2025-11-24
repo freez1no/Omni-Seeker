@@ -30,5 +30,7 @@
 ### 필요 라이브러리 설치
 > 기본적으로, Isaac Sim 및 Isaac Lab이 설치되어있음을 가정합니다.
 ```python
-pip install ultralytics opencv-python
+cd Ommi-Seeker
+python -m pip install -e source/yolo/
+pip install ultralytics opencv-python skrl
 ```
