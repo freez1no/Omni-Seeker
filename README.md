@@ -23,5 +23,5 @@
 ### Full Project Installation
 ```bash
 # Clone this repository
-git clone [https://github.com/freez1no/Omni-Seeker.git](https://github.com/freez1no/Omni-Seeker.git)
-cd Omni-Seeker
+git clone https://github.com/freez1no/Omni-Seeker.git
+cd Omni-Seeker/<project-name-you-want>
