@@ -1,37 +1,27 @@
-<div align="center" dir="auto">
-<img width="1051" height="527" alt="image" src="https://github.com/user-attachments/assets/3aa88360-2756-4d5d-876e-5177cec76a96" />
-<p dir="auto"><a href="https://github.com/freez1no/Omni-Seeker/blob/master/README-KOR.md" rel="nofollow">KOR</a><br></p></div>
+<div align="center" dir="auto"><img width="1051" height="527" alt="image" src="https://github.com/user-attachments/assets/3aa88360-2756-4d5d-876e-5177cec76a96" />
+<p dir="auto"><a href="https://github.com/freez1no/Omni-Seeker/blob/master/README.md" rel="nofollow">ENG</a><br></p></div>
 
-# Nvidia Omniverse Isaac Sim & Lab - Learning to Enhance Object Awareness Using Jetbot & YOLO Model
-The project aims to train **Jetbot** robots to autonomously explore and access objects in a **NVIDIA Isaac Lab** simulation environment.
+# Nvidia Omniverse Isaac Sim & Lab RL Project
+**NVIDIA Isaac Lab** 시뮬레이션 환경에서 **Jetbot** 로봇이 다양한 방법으로 학습, 행동하는 것을 목표로 각 프로젝트를 진행합니다.
 
-## Introduction
-This project establishes a reinforcement learning pipeline that combines 'recognition' and 'action' of robots.
-The 'Jetbot.usd' asset is called from the simulation environment (Isaac Lab) to collect the surrounding environment data in real time through the **camera sensor** mounted on the robot, and this vision data is transmitted to the latest object recognition model **YOLO v11** to identify the location of 'people' or pre-defined 'things' as a bounding box.
-The reinforcement learning agent utilizes the object recognition results of this YOLO model as Reward and State information to learn an optimal driving policy that approaches the detected object safely and efficiently (properly close).
+## 프로젝트 소개
+| ProjectName | Description | Version |
+| --- | --- | --- |
+| Jetbot_YOLO | Jetbot과 YOLO v8(or 11)모델을 결합하여, 객체인식 및 추적 강화학습 | 0.0.3 |
+| Jetbot_FrozenLake | Isaac Sim 환경에 FrozenLake 환경을 생성하고, 특정 구역을 지나가지 않는 강화학습 | 0.0.0 |
 
-### Goals
-1. Core API based Isaac Lab Code Jetbot, Target prim generation ✓
-2. Check Jetbot camera recognition, RL environment, multiple Jetbot and Camera recognition ✓
-3. Real-time collection of image data from Jetbot's camera sensors within the Isaac Lab ✓
-4. Transform the collected vision data to be recognized by the YOLO v11 model ✓
-5. Isaac Lab RL test (working on it)
-6. Obtain bounding box information for desired objects (people, objects, etc.) and monitor bounding them in real time
-7. Based on object detection information, the reinforcement learning environment is designed to reward the robot when it successfully approaches the target
-8. Final Isaac Lab RL, Model Creation
-9. Apply and test models to real Jetbot
+## Environment & Installation
+이 프로젝트는 **NVIDIA Isaac Sim** 및 **Isaac Lab** 환경에서 구동됨. 원활한 시뮬레이션을 위해 다음의 하드웨어 및 소프트웨어 환경을 권장함
 
-###  Tech Stack
-- enviroments : NVIDIA Isaac Lab
-- Object recognition: YOLO v11
-- Algorithm: RL Games, skrl, PPO
-- Data Pipeline: Isaac Sim Camera Sensor
+### Prerequisites
+* **OS**: Ubuntu 22.04 +
+* **GPU**: RTX Series (VRAM 16GB+) / 연구실에서는 L40S 를 사용하였음.
+* **Software**:
+    * [NVIDIA Isaac Sim](https://docs.omniverse.nvidia.com/isaacsim/latest/index.html) (Version 5.0.0+)
+    * [Isaac Lab](https://isaac-sim.github.io/IsaacLab/)
 
-## Install and Try
-### Install Librarys
-> By default, assume that Isaac Sim and Isaac Lab are installed.
-```python
-cd Ommi-Seeker
-python -m pip install -e source/yolo/
-pip install ultralytics opencv-python skrl
-```
+### Full Project Installation
+```bash
+# Clone this repository
+git clone [https://github.com/freez1no/Omni-Seeker.git](https://github.com/freez1no/Omni-Seeker.git)
+cd Omni-Seeker
