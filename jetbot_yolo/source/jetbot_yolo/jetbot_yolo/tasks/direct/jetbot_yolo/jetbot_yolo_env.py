@@ -22,7 +22,7 @@ class JetbotYoloEnv(DirectRLEnv):
     def __init__(self, cfg: JetbotYoloEnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
         
-        # YOLOv8 모델 로드 (가벼운 nano 모델 사용 권장)
+        # YOLOv8 모델 로딩
         print("[INFO] Loading YOLOv8 model...")
         self.yolo_model = YOLO("yolov8n.pt") 
         
@@ -34,60 +34,55 @@ class JetbotYoloEnv(DirectRLEnv):
         self.target_positions = torch.zeros((self.num_envs, 3), device=self.device)
         
         # YOLO 결과 저장용 (obs)
-        # [center_x_norm, center_y_norm, area_norm, flag]
+        # [center_x_norm, center_y_norm, area_norm, flag] = 4
         self.yolo_obs = torch.zeros((self.num_envs, 4), device=self.device)
 
     def _setup_scene(self):
-        # 1. Ground Plane 및 조명 생성
+        # Ground Plane, light
         spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())
         light_cfg = DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
         light_cfg.func("/World/Light", light_cfg)
 
-        # 2. 환경 복제
+        # clone environments
         self.scene.clone_environments(copy_from_source=False)
         self.scene.filter_collisions(global_prim_paths=["/World/ground"])
 
-        # 3. 로봇 생성
-        # [수정] replace 대신 경로를 직접 지정하여 슬래시 중복 방지
+        # create Jetbot
         robot_cfg = self.cfg.robot_cfg.copy()
-        # self.scene.env_regex_ns는 "/World/envs/env_.*" 형태의 문자열입니다.
         robot_cfg.prim_path = f"{self.scene.env_regex_ns}/Robot"
         
         self.robot = Articulation(robot_cfg)
         self.scene.articulations["robot"] = self.robot
         
-        # 4. 타겟 생성
+        # target object
         target_cfg = self.cfg.target_object.copy()
         target_cfg.prim_path = f"{self.scene.env_regex_ns}/Target"
         
         self.target = RigidObject(target_cfg)
         self.scene.rigid_objects["target"] = self.target
 
-        # 5. 카메라 생성
+        # camera sensor
         camera_cfg = self.cfg.tiled_camera.copy()
-        # Jetbot USD 내부 구조에 맞춰 경로 설정
         camera_cfg.prim_path = f"{self.scene.env_regex_ns}/Robot/chassis/rgb_camera/camera"
         
         self.camera = Camera(camera_cfg)
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
-        # Action은 [-1, 1] 범위. 이를 속도 명령으로 변환 (Scale: 10.0 rad/s)
         self.actions = actions.clone().clamp(-1.0, 1.0)
         velocity_command = self.actions * 10.0
         self.robot.set_joint_velocity_target(velocity_command, joint_ids=self.wheel_dof_idx)
 
     def _apply_action(self) -> None:
-        # Sim에서는 자동 처리됨 (Implicit Actuator)
         pass
 
     def _get_observations(self) -> dict:
-        # 1. 카메라 데이터 가져오기 (RGB)
+        # camera data load
         # shape: (num_envs, height, width, 4) - RGBA
         self.camera.update(dt=self.cfg.sim.dt)
         rgba_images = self.camera.data.output["rgb"]
         
-        # 2. YOLO 추론 및 시각화
-        # (학습 속도를 위해 num_envs=1일 때만 시각화 창을 띄우는 로직)
+        # YOLO model inference
+        # 학습 속도를 위해 num_envs=1일 때만 카메라 창을 띄우기
         for i in range(self.num_envs):
             # Tensor -> Numpy 변환 (CPU로 이동)
             img_np = rgba_images[i, :, :, :3].cpu().numpy().astype(np.uint8)
@@ -96,7 +91,7 @@ class JetbotYoloEnv(DirectRLEnv):
             img_bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
             
             # YOLO Inference
-            results = self.yolo_model(img_bgr, verbose=False, classes=[32]) # 클래스지정
+            results = self.yolo_model(img_bgr, verbose=False, classes=[32]) # 타겟 클래스지정
 
             
             best_box = None
@@ -136,7 +131,7 @@ class JetbotYoloEnv(DirectRLEnv):
                 # 타겟 없음
                 self.yolo_obs[i] = torch.tensor([0.0, 0.0, 0.0, 0.0], device=self.device)
 
-            # Viewport 시각화 (OpenCV 창 띄우기)
+            # Viewport 시각화
             if self.num_envs == 1: # 단일 에이전트일 때만 팝업
                 cv2.imshow(f"Jetbot Camera (Env {i})", debug_frame)
                 cv2.waitKey(1)
@@ -151,15 +146,14 @@ class JetbotYoloEnv(DirectRLEnv):
         
         distance = torch.norm(target_pos[:, :2] - robot_pos[:, :2], dim=1)
         
-        # 1. 거리 보상: 가까울수록 보상 증가 (1 / (1+d))
-        reward_reach = 1.0 / (1.0 + distance)
+        # reward 계산부분
+        reward_reach = 1.0 / (1.0 + distance) #타겟접근보상
         
-        # 2. 시야 정렬 보상: YOLO가 중앙을 볼수록 보상
-        # abs(center_x)가 0에 가까울수록 좋음
-        align_error = torch.abs(self.yolo_obs[:, 0])
+
+        align_error = torch.abs(self.yolo_obs[:, 0]) # 중앙 정렬 오차
         reward_align = torch.where(self.yolo_obs[:, 3] > 0.5, 1.0 - align_error, torch.zeros_like(align_error))
         
-        # 3. 충돌 페널티: 너무 가까우면 충돌로 간주
+        # 충돌 페널티
         penalty_collision = torch.where(distance < self.cfg.dist_threshold, -1.0, 0.0)
         
         total_reward = (
@@ -175,14 +169,10 @@ class JetbotYoloEnv(DirectRLEnv):
         target_pos = self.target.data.root_pos_w
         distance = torch.norm(target_pos[:, :2] - robot_pos[:, :2], dim=1)
         
-        # 종료 조건 1: 타겟 도달 (성공)
-        has_reached = distance < self.cfg.dist_threshold
-        
-        # 종료 조건 2: 타임아웃
-        time_out = self.episode_length_buf >= self.max_episode_length - 1
-        
-        # 종료 조건 3: 너무 멀어짐 (낙하 등)
-        too_far = distance > 4.0 
+        # 종료조건
+        has_reached = distance < self.cfg.dist_threshold #타겟 도달
+        time_out = self.episode_length_buf >= self.max_episode_length - 1 #시간초과
+        too_far = distance > 4.0 # 너무 멀리 벗어남
         
         return has_reached | too_far, time_out
 
@@ -192,16 +182,17 @@ class JetbotYoloEnv(DirectRLEnv):
         
         super()._reset_idx(env_ids)
 
-        # 1. 로봇 랜덤 배치
+        # 로봇 랜덤 배치
         robot_root_state = self.robot.data.default_root_state[env_ids].clone()
         robot_root_state[:, :3] += self.scene.env_origins[env_ids]
+
         # 랜덤 회전 (Yaw)
         random_yaw = torch.rand(len(env_ids), device=self.device) * 2 * torch.pi
         quat = math_utils.quat_from_euler_xyz(torch.zeros_like(random_yaw), torch.zeros_like(random_yaw), random_yaw)
         robot_root_state[:, 3:7] = quat
         self.robot.write_root_state_to_sim(robot_root_state, env_ids)
         
-        # 2. 타겟 랜덤 배치 (로봇 주변 1~3m)
+        # 타겟 랜덤 배치 (로봇 주변 1~3m)
         target_root_state = self.target.data.default_root_state[env_ids].clone()
         random_dist = torch.rand(len(env_ids), device=self.device) * 2.0 + 1.0
         random_angle = torch.rand(len(env_ids), device=self.device) * 2 * torch.pi

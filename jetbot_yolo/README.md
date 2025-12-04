@@ -15,9 +15,9 @@ The reinforcement learning agent utilizes the object recognition results of this
 2. Check Jetbot camera recognition, RL environment, multiple Jetbot and Camera recognition ✓
 3. Real-time collection of image data from Jetbot's camera sensors within the Isaac Lab ✓
 4. Transform the collected vision data to be recognized by the YOLO v11 model ✓
-5. Isaac Lab RL test (working on it)
-6. Obtain bounding box information for desired objects (people, objects, etc.) and monitor bounding them in real time
-7. Based on object detection information, the reinforcement learning environment is designed to reward the robot when it successfully approaches the target
+5. Isaac Lab RL test ✓
+6. Obtain bounding box information for desired objects (people, objects, etc.) and monitor bounding them in real time ✓
+7. Based on object detection information, the reinforcement learning environment is designed to reward the robot when it successfully approaches the target ✓
 8. Final Isaac Lab RL, Model Creation
 9. Apply and test models to real Jetbot
 
