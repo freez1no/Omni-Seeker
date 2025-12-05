@@ -32,6 +32,8 @@
 ```python
 pip install ultralytics opencv-python
 ```
+
+```
 cd Ommi-Seeker
 python -m pip install -e source/yolo/
 pip install ultralytics opencv-python skrl
