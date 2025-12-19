@@ -6,7 +6,9 @@
 import argparse
 from isaaclab.app import AppLauncher
 
-parser = argparse.ArgumentParser(description="Lab Test")
+parser = argparse.ArgumentParser(
+    description="Lab Test"
+    )
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 app_launcher = AppLauncher(args_cli)
