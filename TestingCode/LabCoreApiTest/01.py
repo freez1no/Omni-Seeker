@@ -3,12 +3,11 @@
 앱 런처, 파서 설정
 
 """
+
 import argparse
 from isaaclab.app import AppLauncher
 
-parser = argparse.ArgumentParser(
-    description="Lab Test"
-    )
+parser = argparse.ArgumentParser(description="Lab Test")
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 app_launcher = AppLauncher(args_cli)
@@ -29,6 +28,8 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 씬 구성&설정
 
 """
+
+
 def design_scene():
     # 평지 생성
     cfg_ground = sim_utils.GroundPlaneCfg()
@@ -36,14 +37,16 @@ def design_scene():
 
     # 광원 생성
     cfg_light_distant = sim_utils.DistantLightCfg(
-        intensity=3000.0, # 조도
-        color=(0.75, 0.75, 0.75), # 색상
+        intensity=3000.0,  # 조도
+        color=(0.75, 0.75, 0.75),  # 색상
     )
-    cfg_light_distant.func("/World/lightDistant", cfg_light_distant, translation=(1, 0, 10))
+    cfg_light_distant.func(
+        "/World/lightDistant", cfg_light_distant, translation=(1, 0, 10)
+    )
 
     # 오브젝트 그룹 생성
     prim_utils.create_prim("/World/Objects", "Xform")
-    
+
     # 빨간 원뿔 설정
     cfg_cone = sim_utils.ConeCfg(
         radius=0.15,
@@ -65,7 +68,10 @@ def design_scene():
     )
     # 설정기반으로 생성
     cfg_cone_rigid.func(
-        "/World/Objects/ConeRigid", cfg_cone_rigid, translation=(-0.2, 0.0, 2.0), orientation=(0.5, 0.0, 0.5, 0.0)
+        "/World/Objects/ConeRigid",
+        cfg_cone_rigid,
+        translation=(-0.2, 0.0, 2.0),
+        orientation=(0.5, 0.0, 0.5, 0.0),
     )
 
     # deformable body 적용된 파란색 직육면체 설정
@@ -76,12 +82,17 @@ def design_scene():
         physics_material=sim_utils.DeformableBodyMaterialCfg(),
     )
     # 설정기반으로 생성
-    cfg_cuboid_deformable.func("/World/Objects/CuboidDeformable", cfg_cuboid_deformable, translation=(0.15, 0.0, 2.0))
+    cfg_cuboid_deformable.func(
+        "/World/Objects/CuboidDeformable",
+        cfg_cuboid_deformable,
+        translation=(0.15, 0.0, 2.0),
+    )
 
     # usd 파일 불러오기
-    cfg = sim_utils.UsdFileCfg(usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Mounts/SeattleLabTable/table_instanceable.usd")
+    cfg = sim_utils.UsdFileCfg(
+        usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Mounts/SeattleLabTable/table_instanceable.usd"
+    )
     cfg.func("/World/Objects/Table", cfg, translation=(0.0, 0.0, 1.05))
-
 
 
 """
@@ -89,6 +100,8 @@ def design_scene():
 메인함수
 
 """
+
+
 def main():
 
     # Initialize the simulation context
@@ -97,7 +110,7 @@ def main():
     # Set main camera
     sim.set_camera_view([2.5, 2.5, 2.5], [0.0, 0.0, 0.0])
 
-    design_scene() # 설정된 씬 불러오기
+    design_scene()  # 설정된 씬 불러오기
     # Play the simulator
     sim.reset()
     print("Simulation started.")

@@ -16,7 +16,7 @@ simulation_app = app_launcher.app
 import torch
 
 import isaaclab.sim as sim_utils
-import isaaclab.sim.utils.prims as prim_utils
+import isaacsim.core.utils.prims as prim_utils
 import isaaclab.utils.math as math_utils
 from isaaclab.assets import RigidObject, RigidObjectCfg
 from isaaclab.sim import SimulationContext
@@ -129,7 +129,7 @@ def main():
     # Play the simulator
     sim.reset()
     # Now we are ready!
-    print("[INFO]: Setup complete...")
+    print(">>> 설정 완료, 시뮬레이션 시작.")
     # Run the simulator
     run_simulator(sim, scene_entities, scene_origins)
 
