@@ -6,6 +6,7 @@ This code for tesing CUDA availability.
 """
 
 import torch
+
 torch.cuda.init()
 
 if torch.cuda.is_available():
@@ -18,6 +19,6 @@ else:
     print("CUDA is not available.")
 
 a = input("Reset peak memory stats? (y/n): ")
-if a.lower() == 'y':
+if a.lower() == "y":
     torch.cuda.reset_peak_memory_stats(device=None)
     print("Peak memory stats reset.")

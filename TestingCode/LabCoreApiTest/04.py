@@ -2,16 +2,18 @@ import argparse
 
 from isaaclab.app import AppLauncher
 
-parser = argparse.ArgumentParser(
-    description="Tutorial on spawning and interacting with a rigid object."
-)
+# add argparse arguments
+parser = argparse.ArgumentParser(description="Tutorial on spawning and interacting with a rigid object.")
+# append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
+# parse the arguments
 args_cli = parser.parse_args()
 
-
+# launch omniverse app
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
+"""Rest everything follows."""
 
 import torch
 
@@ -33,12 +35,7 @@ def design_scene():
 
     # Create separate groups called "Origin1", "Origin2", "Origin3"
     # Each group will have a robot in it
-    origins = [
-        [0.25, 0.25, 0.0],
-        [-0.25, 0.25, 0.0],
-        [0.25, -0.25, 0.0],
-        [-0.25, -0.25, 0.0],
-    ]
+    origins = [[0.25, 0.25, 0.0], [-0.25, 0.25, 0.0], [0.25, -0.25, 0.0], [-0.25, -0.25, 0.0]]
     for i, origin in enumerate(origins):
         prim_utils.create_prim(f"/World/Origin{i}", "Xform", translation=origin)
 
@@ -51,9 +48,7 @@ def design_scene():
             rigid_props=sim_utils.RigidBodyPropertiesCfg(),
             mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
             collision_props=sim_utils.CollisionPropertiesCfg(),
-            visual_material=sim_utils.PreviewSurfaceCfg(
-                diffuse_color=(0.0, 1.0, 0.0), metallic=0.2
-            ),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 0.0), metallic=0.2),
         ),
         init_state=RigidObjectCfg.InitialStateCfg(),
     )
@@ -64,11 +59,7 @@ def design_scene():
     return scene_entities, origins
 
 
-def run_simulator(
-    sim: sim_utils.SimulationContext,
-    entities: dict[str, RigidObject],
-    origins: torch.Tensor,
-):
+def run_simulator(sim: sim_utils.SimulationContext, entities: dict[str, RigidObject], origins: torch.Tensor):
     """Runs the simulation loop."""
     # Extract scene entities
     # note: we only do this here for readability. In general, it is better to access the entities directly from
@@ -90,10 +81,7 @@ def run_simulator(
             # sample a random position on a cylinder around the origins
             root_state[:, :3] += origins
             root_state[:, :3] += math_utils.sample_cylinder(
-                radius=0.1,
-                h_range=(0.25, 0.5),
-                size=cone_object.num_instances,
-                device=cone_object.device,
+                radius=0.1, h_range=(0.25, 0.5), size=cone_object.num_instances, device=cone_object.device
             )
             # write root state to simulation
             cone_object.write_root_pose_to_sim(root_state[:, :7])
