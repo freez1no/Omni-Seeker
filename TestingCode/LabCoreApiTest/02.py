@@ -6,10 +6,10 @@ Robot, Joint 테스트
 import argparse
 from isaaclab.app import AppLauncher
 
-parser = argparse.ArgumentParser(
-    description="Robot Joint Test"
+parser = argparse.ArgumentParser(description="Robot Joint Test")
+parser.add_argument(
+    "--num_envs", type=int, default=1, help="동시에 생성할 환경(로봇) 수"
 )
-parser.add_argument("--num_envs", type=int, default=1, help="동시에 생성할 환경(로봇) 수")
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 
@@ -31,8 +31,14 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 
 """
 JETBOT_CONFIG = ArticulationCfg(
-    spawn=sim_utils.UsdFileCfg(usd_path=f"{ISAAC_NUCLEUS_DIR}/Robots/NVIDIA/Jetbot/jetbot.usd"),
-    actuators={"wheel_acts": ImplicitActuatorCfg(joint_names_expr=[".*"], damping=None, stiffness=None)},
+    spawn=sim_utils.UsdFileCfg(
+        usd_path=f"{ISAAC_NUCLEUS_DIR}/Robots/NVIDIA/Jetbot/jetbot.usd"
+    ),
+    actuators={
+        "wheel_acts": ImplicitActuatorCfg(
+            joint_names_expr=[".*"], damping=None, stiffness=None
+        )
+    },
 )
 
 """
@@ -48,7 +54,9 @@ DOFBOT_CONFIG = ArticulationCfg(
             max_depenetration_velocity=5.0,
         ),
         articulation_props=sim_utils.ArticulationRootPropertiesCfg(
-            enabled_self_collisions=True, solver_position_iteration_count=8, solver_velocity_iteration_count=0
+            enabled_self_collisions=True,
+            solver_position_iteration_count=8,
+            solver_velocity_iteration_count=0,
         ),
     ),
     init_state=ArticulationCfg.InitialStateCfg(
@@ -91,14 +99,19 @@ DOFBOT_CONFIG = ArticulationCfg(
 씬 설정
 
 """
+
+
 class NewRobotsSceneCfg(InteractiveSceneCfg):
 
     # Ground-plane
-    ground = AssetBaseCfg(prim_path="/World/defaultGroundPlane", spawn=sim_utils.GroundPlaneCfg())
+    ground = AssetBaseCfg(
+        prim_path="/World/defaultGroundPlane", spawn=sim_utils.GroundPlaneCfg()
+    )
 
     # lights
     dome_light = AssetBaseCfg(
-        prim_path="/World/Light", spawn=sim_utils.DomeLightCfg(intensity=3000.0, color=(0.75, 0.75, 0.75))
+        prim_path="/World/Light",
+        spawn=sim_utils.DomeLightCfg(intensity=3000.0, color=(0.75, 0.75, 0.75)),
     )
 
     # robot
@@ -168,12 +181,12 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
 def main():
     sim_cfg = sim_utils.SimulationCfg(device=args_cli.device)
     sim = sim_utils.SimulationContext(sim_cfg)
-    sim.set_camera_view([3.5, 0.0, 3.2], [0.0, 0.0, 0.5]) #카메라 위치
+    sim.set_camera_view([3.5, 0.0, 3.2], [0.0, 0.0, 0.5])  # 카메라 위치
     # Design scene
     scene_cfg = NewRobotsSceneCfg(args_cli.num_envs, env_spacing=2.0)
     scene = InteractiveScene(scene_cfg)
 
-    sim.reset() #시뮬 시작
+    sim.reset()  # 시뮬 시작
     print(">>> 설정 완료, 시뮬레이션 시작.")
     run_simulator(sim, scene)
 
