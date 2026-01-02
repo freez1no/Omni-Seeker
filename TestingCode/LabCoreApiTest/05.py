@@ -3,7 +3,8 @@ import argparse
 from isaaclab.app import AppLauncher
 
 # add argparse arguments
-parser = argparse.ArgumentParser(description="Tutorial on interacting with a deformable object.")
+parser = argparse.ArgumentParser(description="Tutorial on using the interactive scene interface.")
+parser.add_argument("--num_envs", type=int, default=2, help="Number of environments to spawn.")
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
@@ -18,103 +19,75 @@ simulation_app = app_launcher.app
 import torch
 
 import isaaclab.sim as sim_utils
-import isaaclab.utils.math as math_utils
-from isaaclab.assets import DeformableObject, DeformableObjectCfg
+from isaaclab.assets import ArticulationCfg, AssetBaseCfg
+from isaaclab.scene import InteractiveScene, InteractiveSceneCfg
 from isaaclab.sim import SimulationContext
+from isaaclab.utils import configclass
+
+##
+# Pre-defined configs
+##
+from isaaclab_assets import CARTPOLE_CFG  # isort:skip
 
 
-def design_scene():
-    """Designs the scene."""
-    # Ground-plane
-    cfg = sim_utils.GroundPlaneCfg()
-    cfg.func("/World/defaultGroundPlane", cfg)
-    # Lights
-    cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.8, 0.8, 0.8))
-    cfg.func("/World/Light", cfg)
+@configclass
+class CartpoleSceneCfg(InteractiveSceneCfg):
+    """Configuration for a cart-pole scene."""
 
-    origins = [[0.25, 0.25, 0.0], [-0.25, 0.25, 0.0], [0.25, -0.25, 0.0], [-0.25, -0.25, 0.0]]
-    for i, origin in enumerate(origins):
-        sim_utils.create_prim(f"/World/Origin{i}", "Xform", translation=origin)
+    # ground plane
+    ground = AssetBaseCfg(prim_path="/World/defaultGroundPlane", spawn=sim_utils.GroundPlaneCfg())
 
-    # Deformable Object
-    cfg = DeformableObjectCfg(
-        prim_path="/World/Origin.*/Cube",
-        spawn=sim_utils.MeshCuboidCfg(
-            size=(0.2, 0.2, 0.2),
-            deformable_props=sim_utils.DeformableBodyPropertiesCfg(rest_offset=0.0, contact_offset=0.001),
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.5, 0.1, 0.0)),
-            physics_material=sim_utils.DeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e5),
-        ),
-        init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 1.0)),
-        debug_vis=True,
+    # lights
+    dome_light = AssetBaseCfg(
+        prim_path="/World/Light", spawn=sim_utils.DomeLightCfg(intensity=3000.0, color=(0.75, 0.75, 0.75))
     )
-    cube_object = DeformableObject(cfg=cfg)
 
-    # return the scene information
-    scene_entities = {"cube_object": cube_object}
-    return scene_entities, origins
+    # articulation
+    cartpole: ArticulationCfg = CARTPOLE_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
 
-def run_simulator(sim: sim_utils.SimulationContext, entities: dict[str, DeformableObject], origins: torch.Tensor):
-    cube_object = entities["cube_object"]
+def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
+    """Runs the simulation loop."""
+    # Extract scene entities
+    # note: we only do this here for readability.
+    robot = scene["cartpole"]
     # Define simulation stepping
     sim_dt = sim.get_physics_dt()
-    sim_time = 0.0
     count = 0
-
-    # Nodal kinematic targets of the deformable bodies
-    nodal_kinematic_target = cube_object.data.nodal_kinematic_target.clone()
-
-    # Simulate physics
+    # Simulation loop
     while simulation_app.is_running():
-        # reset
-        if count % 250 == 0:
-            # reset counters
-            sim_time = 0.0
+        # Reset
+        if count % 500 == 0:
+            # reset counter
             count = 0
-
-            # reset the nodal state of the object
-            nodal_state = cube_object.data.default_nodal_state_w.clone()
-            # apply random pose to the object
-            pos_w = torch.rand(cube_object.num_instances, 3, device=sim.device) * 0.1 + origins
-            quat_w = math_utils.random_orientation(cube_object.num_instances, device=sim.device)
-            nodal_state[..., :3] = cube_object.transform_nodal_pos(nodal_state[..., :3], pos_w, quat_w)
-
-            # write nodal state to simulation
-            cube_object.write_nodal_state_to_sim(nodal_state)
-
-            # Write the nodal state to the kinematic target and free all vertices
-            nodal_kinematic_target[..., :3] = nodal_state[..., :3]
-            nodal_kinematic_target[..., 3] = 1.0
-            cube_object.write_nodal_kinematic_target_to_sim(nodal_kinematic_target)
-
-            # reset buffers
-            cube_object.reset()
-
-            print("----------------------------------------")
-            print("[INFO]: Resetting object state...")
-
-        # update the kinematic target for cubes at index 0 and 3
-        # we slightly move the cube in the z-direction by picking the vertex at index 0
-        nodal_kinematic_target[[0, 3], 0, 2] += 0.001
-        # set vertex at index 0 to be kinematically constrained
-        # 0: constrained, 1: free
-        nodal_kinematic_target[[0, 3], 0, 3] = 0.0
-        # write kinematic target to simulation
-        cube_object.write_nodal_kinematic_target_to_sim(nodal_kinematic_target)
-
-        # write internal data to simulation
-        cube_object.write_data_to_sim()
-        # perform step
+            # reset the scene entities
+            # root state
+            # we offset the root state by the origin since the states are written in simulation world frame
+            # if this is not done, then the robots will be spawned at the (0, 0, 0) of the simulation world
+            root_state = robot.data.default_root_state.clone()
+            root_state[:, :3] += scene.env_origins
+            robot.write_root_pose_to_sim(root_state[:, :7])
+            robot.write_root_velocity_to_sim(root_state[:, 7:])
+            # set joint positions with some noise
+            joint_pos, joint_vel = robot.data.default_joint_pos.clone(), robot.data.default_joint_vel.clone()
+            joint_pos += torch.rand_like(joint_pos) * 0.1
+            robot.write_joint_state_to_sim(joint_pos, joint_vel)
+            # clear internal buffers
+            scene.reset()
+            print("[INFO]: Resetting robot state...")
+        # Apply random action
+        # -- generate random joint efforts
+        efforts = torch.randn_like(robot.data.joint_pos) * 5.0
+        # -- apply action to the robot
+        robot.set_joint_effort_target(efforts)
+        # -- write data to sim
+        scene.write_data_to_sim()
+        # Perform step
         sim.step()
-        # update sim-time
-        sim_time += sim_dt
+        # Increment counter
         count += 1
-        # update buffers
-        cube_object.update(sim_dt)
-        # print the root position
-        if count % 50 == 0:
-            print(f"Root position (in world): {cube_object.data.root_pos_w[:, :3]}")
+        # Update buffers
+        scene.update(sim_dt)
 
 
 def main():
@@ -123,16 +96,16 @@ def main():
     sim_cfg = sim_utils.SimulationCfg(device=args_cli.device)
     sim = SimulationContext(sim_cfg)
     # Set main camera
-    sim.set_camera_view(eye=[3.0, 0.0, 1.0], target=[0.0, 0.0, 0.5])
+    sim.set_camera_view([2.5, 0.0, 4.0], [0.0, 0.0, 2.0])
     # Design scene
-    scene_entities, scene_origins = design_scene()
-    scene_origins = torch.tensor(scene_origins, device=sim.device)
+    scene_cfg = CartpoleSceneCfg(num_envs=args_cli.num_envs, env_spacing=2.0)
+    scene = InteractiveScene(scene_cfg)
     # Play the simulator
     sim.reset()
     # Now we are ready!
     print("[INFO]: Setup complete...")
     # Run the simulator
-    run_simulator(sim, scene_entities, scene_origins)
+    run_simulator(sim, scene)
 
 
 if __name__ == "__main__":
