@@ -23,7 +23,6 @@ from isaaclab.sim import SimulationContext
 
 
 def design_scene():
-    """Designs the scene."""
     # Ground-plane
     cfg = sim_utils.GroundPlaneCfg()
     cfg.func("/World/defaultGroundPlane", cfg)
@@ -31,8 +30,6 @@ def design_scene():
     cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.8, 0.8, 0.8))
     cfg.func("/World/Light", cfg)
 
-    # Create separate groups called "Origin1", "Origin2", "Origin3"
-    # Each group will have a robot in it
     origins = [
         [0.25, 0.25, 0.0],
         [-0.25, 0.25, 0.0],
@@ -69,10 +66,6 @@ def run_simulator(
     entities: dict[str, RigidObject],
     origins: torch.Tensor,
 ):
-    """Runs the simulation loop."""
-    # Extract scene entities
-    # note: we only do this here for readability. In general, it is better to access the entities directly from
-    #   the dictionary. This dictionary is replaced by the InteractiveScene class in the next tutorial.
     cone_object = entities["cone"]
     # Define simulation stepping
     sim_dt = sim.get_physics_dt()
@@ -117,7 +110,6 @@ def run_simulator(
 
 
 def main():
-    """Main function."""
     # Load kit helper
     sim_cfg = sim_utils.SimulationCfg(device=args_cli.device)
     sim = SimulationContext(sim_cfg)
@@ -135,7 +127,5 @@ def main():
 
 
 if __name__ == "__main__":
-    # run the main function
     main()
-    # close sim app
     simulation_app.close()
