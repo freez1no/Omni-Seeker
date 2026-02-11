@@ -35,7 +35,7 @@ import torch
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import parse_env_cfg
 
-import jetbot_yolo.tasks  # noqa: F401
+import rl03.tasks  # noqa: F401
 
 
 def main():

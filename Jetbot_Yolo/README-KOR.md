@@ -22,7 +22,7 @@
 
 ###  기술 스택
 - 환경 : NVIDIA Isaac Lab
-- 객체인식 : YOLO v11
+- 객체인식 : YOLO 26n
 - 알고리즘 : RL Games, skrl, PPO
 - 데이터 파이프라인 : Isaac Sim Camera Sensor
 

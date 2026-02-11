@@ -79,9 +79,9 @@ import os
 import random
 import time
 import torch
+from packaging import version
 
 import skrl
-from packaging import version
 
 # check for minimum supported skrl version
 SKRL_VERSION = "1.4.3"
@@ -105,15 +105,15 @@ from isaaclab.envs import (
     multi_agent_to_single_agent,
 )
 from isaaclab.utils.dict import print_dict
-from isaaclab.utils.pretrained_checkpoint import get_published_pretrained_checkpoint
 
 from isaaclab_rl.skrl import SkrlVecEnvWrapper
+from isaaclab_rl.utils.pretrained_checkpoint import get_published_pretrained_checkpoint
 
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
 
-import jetbot_yolo.tasks  # noqa: F401
+import rl03.tasks  # noqa: F401
 
 # config shortcuts
 if args_cli.agent is None:

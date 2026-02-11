@@ -23,7 +23,7 @@ The reinforcement learning agent utilizes the object recognition results of this
 
 ###  Tech Stack
 - enviroments : NVIDIA Isaac Lab
-- Object recognition: YOLO v11
+- Object recognition: YOLO 26n
 - Algorithm: RL Games, skrl, PPO
 - Data Pipeline: Isaac Sim Camera Sensor
 
