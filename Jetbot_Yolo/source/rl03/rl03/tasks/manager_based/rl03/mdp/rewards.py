@@ -77,11 +77,17 @@ def _get_yolo_detections(env: ManagerBasedRLEnv):
     detected = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
     centers = torch.zeros((env.num_envs, 2), dtype=torch.float32, device=env.device)
 
-    if YOLO_MODEL:
-        # Batch inference
-        # Note: ultralytics might be slow on CPU loop, but standard predict handles list of arrays
-        # Filter for 'sports ball' (class index 32 in COCO)
-        results = YOLO_MODEL(list(images), verbose=False, classes=[32])
+    # Make sure images have valid dimensions before passing to YOLO
+    if YOLO_MODEL and images.size > 0:
+        # Handle case where output is (N, num_cameras, H, W, C)
+        if images.ndim == 5 and images.shape[1] == 1:
+            images = np.squeeze(images, axis=1)
+
+        if images.ndim >= 3 and images.shape[1] > 0 and images.shape[2] > 0:
+            # Batch inference
+            # Note: ultralytics might be slow on CPU loop, but standard predict handles list of arrays
+            # Filter for 'sports ball' (class index 32 in COCO)
+            results = YOLO_MODEL(list(images), verbose=False, classes=[32])
 
         for i, r in enumerate(results):
             if len(r.boxes) > 0:
@@ -136,99 +142,145 @@ def _get_yolo_detections(env: ManagerBasedRLEnv):
     return cache
 
 
+def explore_reward(env: ManagerBasedRLEnv, robot_cfg: SceneEntityCfg) -> torch.Tensor:
+    """When target is NOT detected, reward active exploration."""
+    data = _get_yolo_detections(env)
+    robot = env.scene[robot_cfg.name]
+
+    current_time = env.episode_length_buf * env.step_dt
+    is_scanning_phase = current_time < 4.0
+
+    lin_vel = torch.norm(robot.data.root_lin_vel_w[:, :2], dim=1)
+    ang_vel_z = robot.data.root_ang_vel_w[:, 2]
+
+    # --- Phase 1: Scan Phase (First 4 seconds) ---
+    # Goal: Spin in place to find the target.
+    # Reward angular velocity (up to 2.0 rad/s), penalize linear velocity.
+    spin_reward = torch.clamp(torch.abs(ang_vel_z), max=2.0)
+    spin_penalty = lin_vel * 2.0
+    phase_1_reward = spin_reward - spin_penalty
+
+    # --- Phase 2: Search Phase (After 4 seconds) ---
+    # Goal: Move around avoiding collisions.
+    # Reward moving forward, penalize standing completely still to prevent getting stuck.
+    speed_bonus = torch.clamp(lin_vel, max=1.0) * 1.5
+    stand_still_penalty = torch.where(
+        lin_vel < 0.1,
+        torch.tensor(1.0, device=env.device),
+        torch.tensor(0.0, device=env.device),
+    )
+
+    phase_2_reward = speed_bonus - stand_still_penalty
+
+    reward = torch.where(is_scanning_phase, phase_1_reward, phase_2_reward)
+
+    return torch.where(~data["detected"], reward, torch.tensor(0.0, device=env.device))
+
+
 def object_detected_reward(env: ManagerBasedRLEnv) -> torch.Tensor:
-    """Reward for detecting the object (1.0), Penalty for not detecting (-1.0)."""
+    """Small baseline reward for successfully tracking/keeping the object in view."""
     data = _get_yolo_detections(env)
-    return torch.where(data["detected"], 1.0, -1.0)
+    return data["detected"].float()
 
 
-def approach_object_reward(
+def approach_target_reward(
     env: ManagerBasedRLEnv, robot_cfg: SceneEntityCfg, target_cfg: SceneEntityCfg
 ) -> torch.Tensor:
-    """Reward for approaching the target (only if detected)."""
+    """When detected, strongly reward moving TOWARDS the target."""
     data = _get_yolo_detections(env)
     robot = env.scene[robot_cfg.name]
     target = env.scene[target_cfg.name]
 
-    # Calculate distance
     pos_robot = robot.data.root_pos_w[:, :2]
     pos_target = target.data.root_pos_w[:, :2]
-    dist = torch.norm(pos_robot - pos_target, dim=1)
+    target_dir = pos_target - pos_robot
+    target_dir = target_dir / (torch.norm(target_dir, dim=1, keepdim=True) + 1e-6)
 
-    # Reward only if detected
-    # Use exponential gradient for sharper reward when close
-    dist = torch.norm(pos_robot - pos_target, dim=1)
-    # sigma = 1.0 (controlling the width of the reward)
-    reward = torch.exp(-dist)
-    return torch.where(data["detected"], reward, torch.tensor(0.0, device=env.device))
-
-
-def approach_velocity_reward(
-    env: ManagerBasedRLEnv, robot_cfg: SceneEntityCfg, target_cfg: SceneEntityCfg
-) -> torch.Tensor:
-    """Reward for moving towards the target (dot product of velocity and direction)."""
-    data = _get_yolo_detections(env)
-    robot = env.scene[robot_cfg.name]
-    target = env.scene[target_cfg.name]
-
-    # Directions
-    pos_robot = robot.data.root_pos_w[:, :2]
-    pos_target = target.data.root_pos_w[:, :2]
-    target_vec = pos_target - pos_robot
-    target_dir = target_vec / (torch.norm(target_vec, dim=1, keepdim=True) + 1e-6)
-
-    # Robot velocity
     vel_robot = robot.data.root_lin_vel_w[:, :2]
+    approach_speed = torch.sum(vel_robot * target_dir, dim=1)
 
-    # Project velocity onto target direction
-    approach_vel = torch.sum(vel_robot * target_dir, dim=1)
+    # Only reward positive approach speed
+    reward = torch.clamp(approach_speed, min=0.0)
 
-    # Only reward if moving towards (positive dot product) and detected
-    reward = torch.clamp(approach_vel, min=0.0)
     return torch.where(data["detected"], reward, torch.tensor(0.0, device=env.device))
 
 
-def approach_centered_reward(
+def center_penalty(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """Penalize the object not being in the center. (Only when detected)"""
+    data = _get_yolo_detections(env)
+    # centers are in [-1, 1], penalize distance from center
+    center_error = torch.norm(data["centers"], dim=1)
+    # Exponentially stronger penalty for larger deviations
+    penalty = torch.square(center_error)
+    return torch.where(data["detected"], penalty, torch.tensor(0.0, device=env.device))
+
+
+def target_reached_reward(
     env: ManagerBasedRLEnv, robot_cfg: SceneEntityCfg, target_cfg: SceneEntityCfg
 ) -> torch.Tensor:
-    """Largest reward for approaching the target while keeping it centered."""
-    data = _get_yolo_detections(env)
+    """Huge reward for reaching the target."""
     robot = env.scene[robot_cfg.name]
     target = env.scene[target_cfg.name]
 
-    # Distance
-    pos_robot = robot.data.root_pos_w[:, :2]
-    pos_target = target.data.root_pos_w[:, :2]
-    dist = torch.norm(pos_robot - pos_target, dim=1)
-
-    # Alignment (Center error)
-    center_error = torch.norm(data["centers"], dim=1)
-    alignment_factor = torch.exp(-2.0 * center_error)
-
-    reward = (1.0 / (1.0 + dist)) * alignment_factor
-    return torch.where(data["detected"], reward, torch.tensor(0.0, device=env.device))
+    dist = torch.norm(
+        robot.data.root_pos_w[:, :2] - target.data.root_pos_w[:, :2], dim=1
+    )
+    return (dist < 0.4).float()
 
 
-def bbox_center_penalty(env: ManagerBasedRLEnv) -> torch.Tensor:
-    """Penalty for bounding box deviating from center."""
-    data = _get_yolo_detections(env)
-    dist = torch.norm(data["centers"], dim=1)
-    # Only penalize if detected? Or if not detected, full penalty?
-    # Requirement: "box deviates... penalty" => implies existing box.
-    return torch.where(data["detected"], dist, torch.tensor(0.0, device=env.device))
-
-
-def collision_penalty(
-    env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg
+def collision_penalty_strict(
+    env: ManagerBasedRLEnv,
+    sensor_cfg: SceneEntityCfg,
+    robot_cfg: SceneEntityCfg,
+    target_cfg: SceneEntityCfg,
 ) -> torch.Tensor:
-    """Penalty for collision."""
-    # Check net contact forces
+    """Penalize collisions heavily, but ignore if we are at the target (since we want to catch it)."""
     contact_sensor = env.scene.sensors[sensor_cfg.name]
-    # Check max force over history and bodies
-    # net_forces_w_history: [N, History, Body, 3]
-    forces = torch.norm(contact_sensor.data.net_forces_w_history, dim=-1)  # [N, H, B]
-    max_force = torch.amax(forces, dim=(1, 2))  # Max over history and bodies
-    return (max_force > 1.0).float()
+    forces = torch.norm(contact_sensor.data.net_forces_w_history, dim=-1)
+    max_force = torch.amax(forces, dim=(1, 2))
+
+    robot = env.scene[robot_cfg.name]
+    target = env.scene[target_cfg.name]
+    dist = torch.norm(
+        robot.data.root_pos_w[:, :2] - target.data.root_pos_w[:, :2], dim=1
+    )
+
+    # If distance is > 0.4 and max_force > 1.0, it's a collision with an obstacle/wall.
+    collision = (max_force > 1.0) & (dist >= 0.4)
+    return collision.float()
+
+
+def target_reached_termination(
+    env: ManagerBasedRLEnv, robot_cfg: SceneEntityCfg, target_cfg: SceneEntityCfg
+) -> torch.Tensor:
+    """Terminate the episode successfully when reaching the target."""
+    robot = env.scene[robot_cfg.name]
+    target = env.scene[target_cfg.name]
+    dist = torch.norm(
+        robot.data.root_pos_w[:, :2] - target.data.root_pos_w[:, :2], dim=1
+    )
+    return dist < 0.35
+
+
+def smooth_driving_penalty(
+    env: ManagerBasedRLEnv, robot_cfg: SceneEntityCfg
+) -> torch.Tensor:
+    """Penalize excessive angular velocity (left/right swaying) to encourage smooth driving.
+    Disabled during the initial scanning phase where turning is required."""
+    robot = env.scene[robot_cfg.name]
+    ang_vel = robot.data.root_ang_vel_w[:, 2]
+
+    current_time = env.episode_length_buf * env.step_dt
+    is_scanning_phase = current_time < 4.0
+
+    data = _get_yolo_detections(env)
+
+    # Apply penalty only if target detected OR not in scanning phase
+    penalty_active = data["detected"] | (~is_scanning_phase)
+
+    penalty = torch.square(ang_vel)
+
+    return torch.where(penalty_active, penalty, torch.tensor(0.0, device=env.device))
 
 
 def object_detected_obs(env: ManagerBasedRLEnv) -> torch.Tensor:

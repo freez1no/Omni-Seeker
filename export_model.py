@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 # 1. 학습된 체크포인트 파일 불러오기
-ckpt_path = '/home/freezino-inc/dev/Omni-Seeker/Jetbot_Yolo/logs/skrl/jetbot_yolo/2026-03-25_15-53-48_ppo_torch/checkpoints/best_agent.pt'
+ckpt_path = '/home/freezino-inc/dev/Omni-Seeker/Jetbot_Yolo/logs/skrl/jetbot_yolo/2026-03-31_08-34-10_ppo_torch/checkpoints/best_agent.pt'
 ckpt = torch.load(ckpt_path, map_location='cpu')
 
 # skrl은 'policy' 키 안에 모델 가중치를 저장합니다. (키가 없으면 전체 로드)

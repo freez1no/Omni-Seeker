@@ -39,7 +39,12 @@ class Rl03SceneCfg(InteractiveSceneCfg):
     # lights
     dome_light = AssetBaseCfg(
         prim_path="/World/DomeLight",
-        spawn=sim_utils.DomeLightCfg(color=(0.9, 0.9, 0.9), intensity=700.0),
+        spawn=sim_utils.DomeLightCfg(color=(0.8, 0.8, 0.8), intensity=500.0),
+    )
+    distant_light = AssetBaseCfg(
+        prim_path="/World/DistantLight",
+        spawn=sim_utils.DistantLightCfg(color=(0.9, 0.9, 0.9), intensity=1500.0),
+        init_state=AssetBaseCfg.InitialStateCfg(rot=(0.707, 0.0, 0.707, 0.0)),
     )
     # walls
     wall_n = AssetBaseCfg(
@@ -47,6 +52,7 @@ class Rl03SceneCfg(InteractiveSceneCfg):
         spawn=sim_utils.CuboidCfg(
             size=(15.2, 0.2, 2.0),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.8, 0.8, 0.8)),
+            collision_props=sim_utils.CollisionPropertiesCfg(),
         ),
         init_state=AssetBaseCfg.InitialStateCfg(pos=(0.0, 7.5, 1.0)),
     )
@@ -55,6 +61,7 @@ class Rl03SceneCfg(InteractiveSceneCfg):
         spawn=sim_utils.CuboidCfg(
             size=(15.2, 0.2, 2.0),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.8, 0.8, 0.8)),
+            collision_props=sim_utils.CollisionPropertiesCfg(),
         ),
         init_state=AssetBaseCfg.InitialStateCfg(pos=(0.0, -7.5, 1.0)),
     )
@@ -63,6 +70,7 @@ class Rl03SceneCfg(InteractiveSceneCfg):
         spawn=sim_utils.CuboidCfg(
             size=(0.2, 15.2, 2.0),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.8, 0.8, 0.8)),
+            collision_props=sim_utils.CollisionPropertiesCfg(),
         ),
         init_state=AssetBaseCfg.InitialStateCfg(pos=(7.5, 0.0, 1.0)),
     )
@@ -71,8 +79,62 @@ class Rl03SceneCfg(InteractiveSceneCfg):
         spawn=sim_utils.CuboidCfg(
             size=(0.2, 15.2, 2.0),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.8, 0.8, 0.8)),
+            collision_props=sim_utils.CollisionPropertiesCfg(),
         ),
         init_state=AssetBaseCfg.InitialStateCfg(pos=(-7.5, 0.0, 1.0)),
+    )
+
+    # roof to cast varying shadows
+    roof = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/Roof",
+        spawn=sim_utils.CuboidCfg(
+            size=(10.0, 10.0, 0.1),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.3, 0.3, 0.3)),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(
+                disable_gravity=True, kinematic_enabled=True
+            ),
+            collision_props=sim_utils.CollisionPropertiesCfg(),
+        ),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 3.0)),
+    )
+
+    # obstacles to create varied environments
+    obstacle_1 = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/Obstacle1",
+        spawn=sim_utils.CylinderCfg(
+            radius=0.4,
+            height=1.0,
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.2, 0.5)),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(disable_gravity=False),
+            mass_props=sim_utils.MassPropertiesCfg(mass=100.0),
+            collision_props=sim_utils.CollisionPropertiesCfg(),
+        ),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(2.5, -2.5, 0.5)),
+    )
+
+    obstacle_2 = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/Obstacle2",
+        spawn=sim_utils.CuboidCfg(
+            size=(0.8, 0.8, 1.0),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.5, 0.2, 0.2)),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(disable_gravity=False),
+            mass_props=sim_utils.MassPropertiesCfg(mass=100.0),
+            collision_props=sim_utils.CollisionPropertiesCfg(),
+        ),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(-2.5, 2.5, 0.5)),
+    )
+
+    obstacle_3 = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/Obstacle3",
+        spawn=sim_utils.ConeCfg(
+            radius=0.4,
+            height=0.8,
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.6, 0.2)),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(disable_gravity=False),
+            mass_props=sim_utils.MassPropertiesCfg(mass=100.0),
+            collision_props=sim_utils.CollisionPropertiesCfg(),
+        ),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.0, -2.5, 0.4)),
     )
 
     # robot: Jetbot
@@ -219,6 +281,53 @@ class EventCfg:
         },
     )
 
+    reset_obstacle_1 = EventTerm(
+        func=mdp.reset_root_state_uniform,
+        mode="reset",
+        params={
+            "pose_range": {"x": (-4.0, 4.0), "y": (-4.0, 4.0)},
+            "velocity_range": {},
+            "asset_cfg": SceneEntityCfg("obstacle_1"),
+        },
+    )
+
+    reset_obstacle_2 = EventTerm(
+        func=mdp.reset_root_state_uniform,
+        mode="reset",
+        params={
+            "pose_range": {"x": (-4.0, 4.0), "y": (-4.0, 4.0)},
+            "velocity_range": {},
+            "asset_cfg": SceneEntityCfg("obstacle_2"),
+        },
+    )
+
+    reset_obstacle_3 = EventTerm(
+        func=mdp.reset_root_state_uniform,
+        mode="reset",
+        params={
+            "pose_range": {"x": (-4.0, 4.0), "y": (-4.0, 4.0)},
+            "velocity_range": {},
+            "asset_cfg": SceneEntityCfg("obstacle_3"),
+        },
+    )
+
+    reset_roof = EventTerm(
+        func=mdp.reset_root_state_uniform,
+        mode="reset",
+        params={
+            "pose_range": {
+                "x": (-2.0, 2.0),
+                "y": (-2.0, 2.0),
+                "z": (-0.5, 0.5),
+                "roll": (-0.2, 0.2),
+                "pitch": (-0.2, 0.2),
+                "yaw": (-3.14, 3.14),
+            },
+            "velocity_range": {},
+            "asset_cfg": SceneEntityCfg("roof"),
+        },
+    )
+
 
 @configclass
 class RewardsCfg:
@@ -227,27 +336,24 @@ class RewardsCfg:
     # Task Rewards
     object_detected = RewTerm(func=mdp.object_detected_reward, weight=2.0)
 
-    approach_object = RewTerm(
-        func=mdp.approach_object_reward,
+    explore = RewTerm(
+        func=mdp.explore_reward,
         weight=2.0,
+        params={"robot_cfg": SceneEntityCfg("robot")},
+    )
+
+    approach = RewTerm(
+        func=mdp.approach_target_reward,
+        weight=10.0,
         params={
             "robot_cfg": SceneEntityCfg("robot"),
             "target_cfg": SceneEntityCfg("sphere"),
         },
     )
 
-    approach_velocity = RewTerm(
-        func=mdp.approach_velocity_reward,
-        weight=5.0,
-        params={
-            "robot_cfg": SceneEntityCfg("robot"),
-            "target_cfg": SceneEntityCfg("sphere"),
-        },
-    )
-
-    approach_centered = RewTerm(
-        func=mdp.approach_centered_reward,
-        weight=5.0,
+    target_reached = RewTerm(
+        func=mdp.target_reached_reward,
+        weight=50.0,
         params={
             "robot_cfg": SceneEntityCfg("robot"),
             "target_cfg": SceneEntityCfg("sphere"),
@@ -255,12 +361,22 @@ class RewardsCfg:
     )
 
     # Penalties
-    bbox_center_penalty = RewTerm(func=mdp.bbox_center_penalty, weight=-2.0)
+    center_focus = RewTerm(func=mdp.center_penalty, weight=-2.0)
+
+    smooth_driving_penalty = RewTerm(
+        func=mdp.smooth_driving_penalty,
+        weight=-0.5,
+        params={"robot_cfg": SceneEntityCfg("robot")},
+    )
 
     collision = RewTerm(
-        func=mdp.collision_penalty,
+        func=mdp.collision_penalty_strict,
         weight=-10.0,
-        params={"sensor_cfg": SceneEntityCfg("contact_forces")},
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces"),
+            "robot_cfg": SceneEntityCfg("robot"),
+            "target_cfg": SceneEntityCfg("sphere"),
+        },
     )
 
     # Standard
@@ -275,11 +391,16 @@ class TerminationsCfg:
 
     detection_timeout = DoneTerm(
         func=mdp.detection_timeout,
-        params={"time_threshold": 6.0},
+        params={"time_threshold": 40.0},
     )
 
-    # Optional: Terminate on collision?
-    # collision = DoneTerm(...)
+    target_reached = DoneTerm(
+        func=mdp.target_reached_termination,
+        params={
+            "robot_cfg": SceneEntityCfg("robot"),
+            "target_cfg": SceneEntityCfg("sphere"),
+        },
+    )
 
 
 ##
@@ -305,7 +426,7 @@ class Rl03EnvCfg(ManagerBasedRLEnvCfg):
         """Post initialization."""
         # general settings
         self.decimation = 4  # 120/4 = 30Hz Control
-        self.episode_length_s = 40.0
+        self.episode_length_s = 80.0
         # viewer settings
         self.viewer.eye = (8.0, 0.0, 5.0)
         # simulation settings
